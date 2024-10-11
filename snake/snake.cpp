@@ -1,372 +1,213 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <windows.h>
-#include <time.h>
+#include <iostream>
+#include <vector>
 #include <conio.h>
+#include <windows.h>
+#include <ctime>
+#include <string>
 
-#define frame_height 30//地图尺寸
-#define frame_width 50
-#define UP 'w'//移动
-#define DOWN 's'
-#define LEFT 'a'
-#define RIGHT 'd'
+using namespace std;
 
-int i,j,k,sp,score;
-char ch=UP,state=UP,choo,n;//初始化方向
-int grow=0;
+bool gameOver;
+int width, height;
+int x, y, fruitX, fruitY, score;
+vector<int> tailX, tailY;
+int nTail;
+enum eDirection { STOP = 0, LEFT, RIGHT, UP, DOWN };
+eDirection dir;
 
-struct Food//食物
-{ 
-   
-    int x;//横坐标
-    int y;//纵坐标
-} food;
+int difficulty = 1; // 1 = Easy, 2 = Normal, 3 = Hard
 
-struct Snake//蛇
-{ 
-   
-    /*用数组储存蛇的每一部分的坐标*/
-    int x[100];
-    int y[100];
-    int len;//长度
-    int speed;//速度
-} snake;
+HANDLE console;
+COORD CursorPosition;
 
-void map(void);//地图
-void update_food(void);//更新食物
-void move_snake(void);//蛇的移动
-int alive(void);//判断蛇是否死亡
-void get_speed(void);//更新速度
-void gotoxy(int x,int y);//移动光标，进行游戏界面的打印
-
-
-int main()
-{ 
-   
-    do
-    { 
-   
-        score=0;//初始化分数为0
-        /*让用户进行难度选择，有彩蛋*/
-        printf("Choose the degree of difficulty:\n1:easy\t2:middle 3:difficult\n");
-        n=_getch();
-        switch(n)
-        { 
-   
-        case '1':
-        { 
-   
-            sp=300;
-            break;
-        }
-        case '2':
-        { 
-   
-            sp=230;
-            break;
-        }
-        case '3':
-        { 
-   
-            sp=180;
-            break;
-        }
-        default:
-        { 
-   
-            printf("Congratulations!Welcome to Devil's difficulty\n");
-            sp=120;
-            break;
-        }
-        }
-        system("cls");//每次新一局游戏先清屏,包含在<stdlib.h>
-        map();//打印地图
-        /*开始游戏*/
-        while(1)
-        { 
-   
-            update_food();//生产食物
-            get_speed();//获取速度
-            move_snake();//移动
-            Sleep(snake.speed);//延时函数,speed数值越大延时越长
-            if(!(alive()))//判断蛇是否死亡
-            { 
-   
-                break;//死亡则退出循环
-            }
-        }
-        printf("Game Over!\n");
-        printf("1:Restart\t2:exit");
-        choo=_getch();
-    }
-    while(choo=='1');
-    return 0;
+void gotoxy(int x, int y) {
+    CursorPosition.X = x;
+    CursorPosition.Y = y;
+    SetConsoleCursorPosition(console, CursorPosition);
 }
 
-void map()
-{ 
-   
-    srand(time(NULL));
-    /*打印第一个食物*/
-    /*Attention!此处留了一个bug:可能食物 的位置与初始的蛇重合，然后食物就会消 失，读者可以加以改进*/
-    food.x=rand()%(frame_height-2)+1;
-    food.y=rand()%(frame_width-2)+1;//在框内
-    gotoxy(food.x,food.y);//把光标移动到该坐标
-    printf("$");//打印食物
+void GetWindowSize() {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(console, &csbi);
+    width = csbi.srWindow.Right - csbi.srWindow.Left - 2;
+    height = csbi.srWindow.Bottom - csbi.srWindow.Top - 4;
+}
 
-    /*snake的初始化*/
-    snake.x[0]=frame_height/2;
-    snake.y[0]=frame_width/2;
-    gotoxy(snake.x[0],snake.y[0]);
-    printf("@");
-    snake.len=3;
-    snake.speed=200;
-    for(k=1; k<snake.len; k++)
-    { 
-   
-        snake.x[k]=snake.x[k-1]+1;
-        snake.y[k]=snake.y[k-1];
-        gotoxy(snake.x[k],snake.y[k]);
-        printf("@");
-    }
-    /*墙壁*/
-    for(j=0; j<frame_width; j++)
-    { 
-   
-        gotoxy(0,j);
-        printf("#");
-        gotoxy(frame_height-1,j);
-        printf("#");
-    }
-    for(i=0; i<frame_height-1; i++)
-    { 
-   
-        gotoxy(i,0);
-        printf("#");
-        gotoxy(i,frame_width-1);
-        printf("#");
-    }
-    gotoxy(2,frame_width+3);
-    if(n=='1') printf("Difficulty: easy");
-    else if(n=='2') printf("Difficulty: middle");
-    else if(n=='3') printf("Difficulty: difficult");
-    else printf("Welcome to the Devil's difficulty");
-    gotoxy(4,frame_width+3);
-    printf("UP: w");
-    gotoxy(6,frame_width+3);
-    printf("DOWN: s");
-    gotoxy(8,frame_width+3);
-    printf("LEFT: a");
-    gotoxy(10,frame_width+3);
-    printf("RIGHT:d");
-    gotoxy(12,frame_width+3);
-    printf("Your score:%d",score);
+void Setup() {
+    console = GetStdHandle(STD_OUTPUT_HANDLE);
+    GetWindowSize();
+    gameOver = false;
+    dir = STOP;
+    x = width / 2;
+    y = height / 2;
+    fruitX = rand() % width;
+    fruitY = rand() % height;
+    score = 0;
+    tailX.clear();
+    tailY.clear();
+    nTail = 0;
 }
-/*食物*/
-void update_food()
-{ 
-   
-    if(snake.x[0]==food.x&&snake.y[0]==food.y)//吃到食物
-    { 
-   
-        score+=10;
-        gotoxy(12,frame_width+3);
-        printf("Your score:%d",score);
-        srand(time(NULL));
-        /*以下是更新食物的代码,里面排除了 食物与蛇重合的情况,读者可以参考以 下代码完成对上述bug的改进*/
-        int flag=1;//标记变量
-        do
-        { 
-   
-        food.x=rand()%(frame_height-2)+1;
-        food.y=rand()%(frame_width-2)+1;//在框内
-        for(i=0; i<snake.len; i++)
-        { 
-   
-            if(food.x==snake.x[i]&&food.y==snake.y[i])
-            { 
-   
-                flag=0;//有重合
-                break;
-            }
-        }
-        }
-        while(flag==0);
-        /*打印食物*/
-        gotoxy(food.x,food.y);
-        printf("$");
-        snake.len++;
-        grow=1;//表明长了，在move_snake函数中有用到
+
+void DrawBorder() {
+    system("cls");
+    for (int i = 0; i < width + 2; i++) {
+        gotoxy(i, 0);
+        cout << "#";
+        gotoxy(i, height + 1);
+        cout << "#";
+    }
+    for (int i = 0; i <= height + 1; i++) {
+        gotoxy(0, i);
+        cout << "#";
+        gotoxy(width + 1, i);
+        cout << "#";
     }
 }
-/*移动蛇*/
-void move_snake()
-{ 
-   
-    while(_kbhit())//键盘有输入
-    { 
-   
-        ch=_getch();
-    }
-    if(!grow)//没有长
-    { 
-   
-        gotoxy(snake.x[snake.len-1],snake.y[snake.len-1]);
-        printf(" ");//走了，在数组的最后打印空格，清除原有的蛇尾
-    }
-    for(k=snake.len-1; k>0; k--)//更新蛇的坐标，除了蛇头,其余位置继承上一个点的坐标
-    { 
-   
-        snake.x[k]=snake.x[k-1];
-        snake.y[k]=snake.y[k-1];//移动位置
-    }
-    switch(ch)//改变方向
-    { 
-   
-    case UP:
-    { 
-   
-        if(state==DOWN)//如果此时方向向下，输入向上的作用要被无视
-        { 
-   
-            snake.x[0]++;
-            break;
-        }
-        else
-        { 
-   
-            snake.x[0]--;
-            state=UP;//其余的改变状态为向上
-            break;
+
+void Draw() {
+    vector<string> buffer(height, string(width, ' '));
+
+    buffer[y][x] = 'O';
+    buffer[fruitY][fruitX] = 'F';
+
+    for (int k = 0; k < nTail; k++) {
+        if (tailX[k] >= 0 && tailX[k] < width && tailY[k] >= 0 && tailY[k] < height) {
+            buffer[tailY[k]][tailX[k]] = 'o';
         }
     }
-    case DOWN:
-    { 
-   
-        if(state==UP)
-        { 
-   
-            snake.x[0]--;
+
+    for (int i = 0; i < height; i++) {
+        gotoxy(1, i + 1);
+        cout << buffer[i];
+    }
+
+    gotoxy(0, height + 2);
+    cout << "Score: " << score << "    ";
+}
+
+void Input() {
+    if (_kbhit()) {
+        switch (_getch()) {
+        case 'a':
+            if (dir != RIGHT) dir = LEFT;
             break;
-        }
-        else
-        { 
-   
-            snake.x[0]++;
-            state=DOWN;
+        case 'd':
+            if (dir != LEFT) dir = RIGHT;
+            break;
+        case 'w':
+            if (dir != DOWN) dir = UP;
+            break;
+        case 's':
+            if (dir != UP) dir = DOWN;
+            break;
+        case 'x':
+            gameOver = true;
             break;
         }
     }
+}
+
+void Logic() {
+    int prevX = tailX.empty() ? x : tailX[0];
+    int prevY = tailY.empty() ? y : tailY[0];
+    int prev2X, prev2Y;
+    if (!tailX.empty()) tailX[0] = x;
+    if (!tailY.empty()) tailY[0] = y;
+    for (int i = 1; i < nTail; i++) {
+        prev2X = tailX[i];
+        prev2Y = tailY[i];
+        tailX[i] = prevX;
+        tailY[i] = prevY;
+        prevX = prev2X;
+        prevY = prev2Y;
+    }
+    switch (dir) {
     case LEFT:
-    { 
-   
-        if(state==RIGHT)
-        { 
-   
-            snake.y[0]++;
-            break;
-        }
-        else
-        { 
-   
-            snake.y[0]--;
-            state=LEFT;
-            break;
-        }
-    }
+        x--;
+        break;
     case RIGHT:
-    { 
-   
-        if(state==LEFT)
-        { 
-   
-            snake.y[0]--;
-            break;
-        }
-        else
-        { 
-   
-            snake.y[0]++;
-            state=RIGHT;
-            break;
-        }
-    }
-    /*摁其余键,保持原有状态*/
+        x++;
+        break;
+    case UP:
+        y--;
+        break;
+    case DOWN:
+        y++;
+        break;
     default:
-    { 
-   
-        if(state==DOWN)
-        { 
-   
-            snake.x[0]++;
-            break;
-        }
-        else if(state==UP)
-        { 
-   
-            snake.x[0]--;
-            break;
-        }
-        else if(state==LEFT)
-        { 
-   
-            snake.y[0]--;
-            break;
-        }
-        else if(state==RIGHT)
-        { 
-   
-            snake.y[0]++;
-            break;
-        }
+        break;
+    }
 
+    if (x >= width || x < 0 || y >= height || y < 0)
+        gameOver = true;
+
+    for (int i = 0; i < nTail; i++)
+        if (tailX[i] == x && tailY[i] == y)
+            gameOver = true;
+
+    if (x == fruitX && y == fruitY) {
+        score += 10;
+        fruitX = rand() % width;
+        fruitY = rand() % height;
+        nTail++;
+        tailX.push_back(0);
+        tailY.push_back(0);
     }
+}
+
+void ShowInstructions() {
+    system("cls");
+    cout << "Welcome to the Snake Game!" << endl << endl;
+    cout << "Instructions:" << endl;
+    cout << "1. Use WASD keys to control the snake:" << endl;
+    cout << "   W - Up" << endl;
+    cout << "   S - Down" << endl;
+    cout << "   A - Left" << endl;
+    cout << "   D - Right" << endl;
+    cout << "2. Eat fruits (F) to grow and earn points" << endl;
+    cout << "3. Avoid hitting the walls or your own tail" << endl;
+    cout << "4. Press X at any time to exit the game" << endl << endl;
+    cout << "Press any key to start the game...";
+    _getch();
+}
+
+int main() {
+    srand(time(0));
+    console = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    ShowInstructions();
+
+    cout << "\nChoose difficulty (1-Easy, 2-Normal, 3-Hard): ";
+    cin >> difficulty;
+
+    Setup();
+    DrawBorder();
+
+    while (!gameOver) {
+        Draw();
+        Input();
+        Logic();
+        // Adjusted sleep times for different difficulty levels
+        Sleep(difficulty == 1 ? 200 : (difficulty == 2 ? 100 : 50));
+
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        if (GetConsoleScreenBufferInfo(console, &csbi)) {
+            int newWidth = csbi.srWindow.Right - csbi.srWindow.Left - 2;
+            int newHeight = csbi.srWindow.Bottom - csbi.srWindow.Top - 4;
+            if (newWidth != width || newHeight != height) {
+                width = newWidth;
+                height = newHeight;
+                Setup();
+                DrawBorder();
+            }
+        }
     }
-    gotoxy(snake.x[0],snake.y[0]);
-    printf("@");//打印蛇头
-    grow=0;//初始成长状态为0
-    gotoxy(frame_height,0);//光标移动到地图左下角下方
-}
-/*存活状态*/
-int alive(void)
-{ 
-   
-    if(snake.x[0]==0||snake.x[0]==frame_height-1||snake.y[0]==0||snake.y[0]==frame_width-1)//撞墙
-        return 0;
-    for(k=1; k<snake.len; k++) //咬到自己
-    { 
-   
-        if(snake.x[0]==snake.x[k]&&snake.y[0]==snake.y[k])
-            return 0;
-    }
-    return 1;
-}
-/*加速*/
-/*speed越大,蛇的速度越小*/
-void get_speed()
-{ 
-   
-    if(snake.len<=6)
-        snake.speed=sp;
-    else if(snake.len<=10)
-        snake.speed=sp-20;
-    else if(snake.len<=20)
-        snake.speed=sp-50;
-    else if(snake.len<=30)
-        snake.speed=sp-60;
-    else
-        snake.speed=sp-70;
-}
-/*移动光标*/
-void gotoxy(int x,int y)
-{ 
-   
-    HANDLE hout;
-    COORD cor;
-    /* typedef struct _COORD { SHORT X; // horizontal coordinate SHORT Y; // vertical coordinate } COORD; 用该结构体来储存坐标 */
-    hout=GetStdHandle(STD_OUTPUT_HANDLE);//从标准输出设备中取得一个句柄
-    /*这其中x,y的赋值对象要注意,不懂的好好想想*/
-    cor.X=y;
-    cor.Y=x;
-    SetConsoleCursorPosition(hout,cor);//定位光标的函数
+
+    gotoxy(width / 2 - 5, height / 2);
+    cout << "Game Over!";
+    gotoxy(width / 2 - 8, height / 2 + 1);
+    cout << "Your Score: " << score;
+    gotoxy(0, height + 3);
+
+    return 0;
 }
